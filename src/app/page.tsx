@@ -140,237 +140,103 @@ export default function VideoChat() {
   // Clean up on component unmount
   useEffect(() => {
     return () => {
-      leaveRoom();
       if (socketRef.current) {
         socketRef.current.disconnect();
-        socketRef.current = null;
+      }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [leaveRoom]);
-
-  // Create a peer connection
-  const createPeer = useCallback(
-    (userToSignal: string, callerId: string, stream: MediaStream) => {
-      try {
-        const peer = new Peer({
-          initiator: true,
-          trickle: false,
-          stream,
-          config: {
-            iceServers: [
-              { urls: "stun:stun.l.google.com:19302" },
-              { urls: "stun:global.stun.twilio.com:3478" },
-            ],
-          },
-        });
-
-        peer.on("signal", (signal) => {
-          if (socketRef.current && socketConnected) {
-            socketRef.current.emit("sending-signal", {
-              userToSignal,
-              callerId,
-              callerName: myName,
-              signal,
-            });
-          }
-        });
-
-        peer.on("error", (err) => {
-          console.error("Peer connection error:", err);
-        });
-
-        return peer;
-      } catch (err) {
-        console.error("Error creating peer:", err);
-        return null;
-      }
-    },
-    [myName, socketConnected]
-  );
-
-  // Add a peer connection
-  const addPeer = useCallback(
-    (
-      incomingSignal: Peer.SignalData,
-      callerId: string,
-      stream: MediaStream
-    ) => {
-      try {
-        const peer = new Peer({
-          initiator: false,
-          trickle: false,
-          stream,
-          config: {
-            iceServers: [
-              { urls: "stun:stun.l.google.com:19302" },
-              { urls: "stun:global.stun.twilio.com:3478" },
-            ],
-          },
-        });
-
-        peer.on("signal", (signal) => {
-          if (socketRef.current && socketConnected) {
-            socketRef.current.emit("returning-signal", {
-              signal,
-              callerId,
-            });
-          }
-        });
-
-        peer.on("error", (err) => {
-          console.error("Peer connection error:", err);
-        });
-
-        // Ensure we're not trying to signal a null or destroyed peer
-        if (peer._pc) {
-          peer.signal(incomingSignal);
-        }
-
-        return peer;
-      } catch (err) {
-        console.error("Error adding peer:", err);
-        return null;
-      }
-    },
-    [socketConnected]
-  );
+  }, [screenStream]);
 
   // Set up socket listeners
-  const setupSocketListeners = useCallback(
-    (mediaStream: MediaStream) => {
-      if (!socketRef.current) return;
+  const setupSocketListeners = useCallback((mediaStream: MediaStream) => {
+    if (!socketRef.current) return;
 
-      // Handle connection and disconnection events
-      socketRef.current.on("connect", () => {
-        console.log("Socket connected");
-        setSocketConnected(true);
-        setErrorMsg("");
-      });
+    socketRef.current.on("connect_error", (err) => {
+      console.error("Connection error:", err);
+      setErrorMsg(
+        "Unable to connect to meeting server. Please try again later."
+      );
+    });
 
-      socketRef.current.on("disconnect", () => {
-        console.log("Socket disconnected");
-        setSocketConnected(false);
-        cleanupPeers();
-        setErrorMsg("Disconnected from server. Trying to reconnect...");
-      });
+    socketRef.current.on("room-users", (users: User[]) => {
+      // Create peers for all users already in the room
+      const peersArray: PeerObject[] = [];
 
-      socketRef.current.on("connect_error", (err) => {
-        console.error("Connection error:", err);
-        setSocketConnected(false);
-        setErrorMsg(
-          "Unable to connect to meeting server. Please try again later."
-        );
-      });
+      users.forEach((user: User) => {
+        if (user.id !== socketRef.current?.id) {
+          const peer = createPeer(
+            user.id,
+            socketRef.current?.id || "",
+            mediaStream
+          );
 
-      socketRef.current.on("room-users", (users: User[]) => {
-        try {
-          // Clean existing peers first to prevent duplicate connections
-          cleanupPeers();
-
-          // Create peers for all users already in the room
-          const peersArray: PeerObject[] = [];
-
-          users.forEach((user: User) => {
-            if (user.id !== socketRef.current?.id) {
-              const peer = createPeer(
-                user.id,
-                socketRef.current?.id || "",
-                mediaStream
-              );
-
-              if (peer) {
-                peersRef.current.push({
-                  id: user.id,
-                  name: user.name,
-                  peer,
-                });
-
-                peersArray.push({
-                  id: user.id,
-                  name: user.name,
-                  peer,
-                });
-              }
-            }
+          peersRef.current.push({
+            id: user.id,
+            name: user.name,
+            peer,
           });
 
-          setPeers(peersArray);
-        } catch (err) {
-          console.error("Error handling room users:", err);
+          peersArray.push({
+            id: user.id,
+            name: user.name,
+            peer,
+          });
         }
       });
 
-      socketRef.current.on("user-joined", (payload: UserJoinedPayload) => {
-        try {
-          // Check if we already have a connection with this user
-          const existingPeer = peersRef.current.find(
-            (p) => p.id === payload.callerId
-          );
-          if (existingPeer) {
-            console.log(
-              "Already connected to this user, skipping duplicate connection"
-            );
-            return;
-          }
+      setPeers(peersArray);
+    });
 
-          // Create peer for the new user
-          const peer = addPeer(payload.signal, payload.callerId, mediaStream);
+    socketRef.current.on("user-joined", (payload: UserJoinedPayload) => {
+      // Create peer for the new user
+      const peer = addPeer(payload.signal, payload.callerId, mediaStream);
 
-          if (peer) {
-            peersRef.current.push({
-              id: payload.callerId,
-              name: payload.callerName,
-              peer,
-            });
-
-            setPeers((prev) => [
-              ...prev,
-              {
-                id: payload.callerId,
-                name: payload.callerName,
-                peer,
-              },
-            ]);
-          }
-        } catch (err) {
-          console.error("Error handling user joined:", err);
-        }
+      peersRef.current.push({
+        id: payload.callerId,
+        name: payload.callerName,
+        peer,
       });
 
-      socketRef.current.on(
-        "receiving-returned-signal",
-        (payload: ReturnedSignalPayload) => {
-          try {
-            // Find the peer and signal them back
-            const item = peersRef.current.find((p) => p.id === payload.id);
-            if (item && item.peer && item.peer._pc) {
-              item.peer.signal(payload.signal);
-            }
-          } catch (err) {
-            console.error("Error handling returned signal:", err);
-          }
-        }
-      );
+      setPeers((prev) => [
+        ...prev,
+        {
+          id: payload.callerId,
+          name: payload.callerName,
+          peer,
+        },
+      ]);
+    });
 
-      socketRef.current.on("user-left", (userId: string) => {
-        try {
-          // Find and destroy the peer that left
-          const peerObj = peersRef.current.find((p) => p.id === userId);
-          if (peerObj && peerObj.peer) {
-            peerObj.peer.destroy();
-          }
-
-          // Update peers list
-          const newPeers = peersRef.current.filter((p) => p.id !== userId);
-          peersRef.current = newPeers;
-          setPeers(newPeers);
-        } catch (err) {
-          console.error("Error handling user left:", err);
+    socketRef.current.on(
+      "receiving-returned-signal",
+      (payload: ReturnedSignalPayload) => {
+        // Find the peer and signal them back
+        const item = peersRef.current.find((p) => p.id === payload.id);
+        if (item) {
+          item.peer.signal(payload.signal);
         }
-      });
-    },
-    [cleanupPeers, createPeer, addPeer]
-  );
+      }
+    );
+
+    socketRef.current.on("user-left", (userId: string) => {
+      // Remove the peer that left
+      const peerObj = peersRef.current.find((p) => p.id === userId);
+      if (peerObj) {
+        peerObj.peer.destroy();
+      }
+
+      const newPeers = peersRef.current.filter((p) => p.id !== userId);
+      peersRef.current = newPeers;
+      setPeers(newPeers);
+    });
+  }, []);
 
   const joinRoom = async () => {
     if (!nameInput.trim()) {
@@ -388,22 +254,15 @@ export default function VideoChat() {
     setRoom(roomInput);
 
     try {
-      // Clean up any existing connections first
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
+      // Initialize socket only when joining
+      if (!socketRef.current) {
+        socketRef.current = io("https://socketio-group-server.onrender.com", {
+          reconnectionAttempts: 5,
+          reconnectionDelay: 5000,
+          reconnectionDelayMax: 5000,
+          timeout: 10000,
+        });
       }
-      cleanupPeers();
-      cleanupStreams();
-
-      // Initialize socket
-      socketRef.current = io("https://socketio-group-server.onrender.com", {
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000, // Start with 1s delay
-        reconnectionDelayMax: 5000, // Max 5s delay
-        timeout: 10000, // 10s timeout
-        transports: ["websocket", "polling"], // Try WebSocket first, fall back to polling
-      });
 
       // Get camera/mic permissions with constraints for better quality
       const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -427,18 +286,14 @@ export default function VideoChat() {
       // Set up socket listeners with the media stream
       setupSocketListeners(mediaStream);
 
-      // Setup connection established handler
-      socketRef.current.on("connect", () => {
-        // Only join room after connection is established
-        socketRef.current?.emit("join-room", {
-          roomId: roomInput,
-          userId: socketRef.current.id,
-          userName: nameInput,
-        });
-
-        setInRoom(true);
-        setSocketConnected(true);
+      // Join the room
+      socketRef.current.emit("join-room", {
+        roomId: roomInput,
+        userId: socketRef.current.id,
+        userName: nameInput,
       });
+
+      setInRoom(true);
     } catch (err) {
       console.error("Error accessing media devices:", err);
       setErrorMsg(
@@ -447,13 +302,101 @@ export default function VideoChat() {
     }
   };
 
+  // Make sure video element is updated when stream is available
+  useEffect(() => {
+    if (stream && myVideo.current) {
+      myVideo.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      leaveRoom();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [leaveRoom]);
+
+  const createPeer = useCallback(
+    (userToSignal: string, callerId: string, stream: MediaStream) => {
+      const peer = new Peer({
+        initiator: true,
+        trickle: false,
+        stream,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com:3478" },
+          ],
+        },
+      });
+
+      peer.on("signal", (signal) => {
+        if (socketRef.current && socketConnected) {
+          socketRef.current.emit("sending-signal", {
+            userToSignal,
+            callerId,
+            callerName: myName,
+            signal,
+          });
+        }
+      });
+
+      peer.on("error", (err) => {
+        console.error("Peer connection error:", err);
+      });
+
+      return peer;
+    },
+    [myName, socketConnected]
+  );
+
+  const addPeer = useCallback(
+    (
+      incomingSignal: Peer.SignalData,
+      callerId: string,
+      stream: MediaStream
+    ) => {
+      const peer = new Peer({
+        initiator: false,
+        trickle: false,
+        stream,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com:3478" },
+          ],
+        },
+      });
+
+      peer.on("signal", (signal) => {
+        if (socketRef.current && socketConnected) {
+          socketRef.current.emit("returning-signal", {
+            signal,
+            callerId,
+          });
+        }
+      });
+
+      peer.on("error", (err) => {
+        console.error("Peer connection error:", err);
+      });
+
+      peer.signal(incomingSignal);
+      return peer;
+    },
+    [socketConnected]
+  );
+
   const shareScreen = async () => {
     if (!isScreenSharing) {
       try {
         const screenCaptureStream =
           (await navigator.mediaDevices.getDisplayMedia({
             audio: false,
-            video: true,
           })) as MediaStream;
 
         setScreenStream(screenCaptureStream);
@@ -462,24 +405,16 @@ export default function VideoChat() {
         const videoTrack = screenCaptureStream.getVideoTracks()[0];
 
         peersRef.current.forEach(({ peer }) => {
-          try {
-            if (peer && (peer as any)._pc) {
-              // Find the sender for the video track and replace it
-              const sender = (peer as any)._pc
-                .getSenders()
-                .find(
-                  (s: RTCPeerConnectionSender) =>
-                    s.track && s.track.kind === "video"
-                );
+          // Find the sender for the video track and replace it
+          const sender = (peer as any)._pc
+            .getSenders()
+            .find(
+              (s: RTCPeerConnectionSender) =>
+                s.track && s.track.kind === "video"
+            );
 
-              if (sender) {
-                sender.replaceTrack(videoTrack).catch((err) => {
-                  console.error("Error replacing track:", err);
-                });
-              }
-            }
-          } catch (err) {
-            console.error("Error updating peer with screen share:", err);
+          if (sender) {
+            sender.replaceTrack(videoTrack);
           }
         });
 
@@ -505,36 +440,22 @@ export default function VideoChat() {
 
   const stopScreenSharing = useCallback(() => {
     if (screenStream) {
-      screenStream.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch (err) {
-          console.error("Error stopping screen track:", err);
-        }
-      });
+      screenStream.getTracks().forEach((track) => track.stop());
 
       // Switch back to camera for all peers
       if (streamRef.current) {
         const videoTrack = streamRef.current.getVideoTracks()[0];
 
         peersRef.current.forEach(({ peer }) => {
-          try {
-            if (peer && (peer as any)._pc) {
-              const sender = (peer as any)._pc
-                .getSenders()
-                .find(
-                  (s: RTCPeerConnectionSender) =>
-                    s.track && s.track.kind === "video"
-                );
+          const sender = (peer as any)._pc
+            .getSenders()
+            .find(
+              (s: RTCPeerConnectionSender) =>
+                s.track && s.track.kind === "video"
+            );
 
-              if (sender && videoTrack) {
-                sender.replaceTrack(videoTrack).catch((err) => {
-                  console.error("Error replacing track back to camera:", err);
-                });
-              }
-            }
-          } catch (err) {
-            console.error("Error switching back to camera:", err);
+          if (sender && videoTrack) {
+            sender.replaceTrack(videoTrack);
           }
         });
 
@@ -551,30 +472,22 @@ export default function VideoChat() {
 
   const toggleMute = () => {
     if (streamRef.current) {
-      try {
-        const audioTracks = streamRef.current.getAudioTracks();
-        if (audioTracks.length > 0) {
-          const enabled = !audioTracks[0].enabled;
-          audioTracks[0].enabled = enabled;
-          setIsMuted(!enabled);
-        }
-      } catch (err) {
-        console.error("Error toggling mute:", err);
+      const audioTracks = streamRef.current.getAudioTracks();
+      if (audioTracks.length > 0) {
+        const enabled = !audioTracks[0].enabled;
+        audioTracks[0].enabled = enabled;
+        setIsMuted(!enabled);
       }
     }
   };
 
   const toggleVideo = () => {
     if (streamRef.current) {
-      try {
-        const videoTracks = streamRef.current.getVideoTracks();
-        if (videoTracks.length > 0) {
-          const enabled = !videoTracks[0].enabled;
-          videoTracks[0].enabled = enabled;
-          setIsVideoOff(!enabled);
-        }
-      } catch (err) {
-        console.error("Error toggling video:", err);
+      const videoTracks = streamRef.current.getVideoTracks();
+      if (videoTracks.length > 0) {
+        const enabled = !videoTracks[0].enabled;
+        videoTracks[0].enabled = enabled;
+        setIsVideoOff(!enabled);
       }
     }
   };
@@ -737,6 +650,7 @@ export default function VideoChat() {
   );
 }
 
+// Video component for remote peers - separated for better performance
 // Video component for remote peers - separated for better performance
 const RemoteVideo = ({ peer }: { peer: Peer.Instance }) => {
   const ref = useRef<HTMLVideoElement>(null);
