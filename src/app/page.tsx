@@ -1,6 +1,6 @@
 // pages/video-chat.tsx
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Peer from "simple-peer";
 import { io, Socket } from "socket.io-client";
 
@@ -52,11 +52,15 @@ export default function VideoChat() {
   const peersRef = useRef<PeerObject[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Function to leave the room - define it outside useEffect so it can be referenced
-  const leaveRoom = () => {
+  // Stabilize the leaveRoom function with useCallback
+  const leaveRoom = useCallback(() => {
     // Clean up
     if (socketRef.current) {
       socketRef.current.emit("leave-room", { roomId: room });
+      socketRef.current.off("room-users");
+      socketRef.current.off("user-joined");
+      socketRef.current.off("receiving-returned-signal");
+      socketRef.current.off("user-left");
     }
 
     // Close all peer connections
@@ -82,17 +86,7 @@ export default function VideoChat() {
     setInRoom(false);
     setIsMuted(false);
     setIsVideoOff(false);
-  };
-
-  useEffect(() => {
-    // Connect to signaling server
-    socketRef.current = io("https://socketio-group-server.onrender.com"); // Replace with your local IP
-
-    return () => {
-      leaveRoom();
-      socketRef.current?.disconnect();
-    };
-  }, [leaveRoom]); // Added leaveRoom to dependencies
+  }, [room, screenStream]);
 
   // Update streamRef when stream changes
   useEffect(() => {
@@ -104,7 +98,108 @@ export default function VideoChat() {
     if (stream && myVideo.current) {
       myVideo.current.srcObject = stream;
     }
-  }, [stream, myVideo]);
+  }, [stream]);
+
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [screenStream]);
+
+  // Set up socket listeners
+  const setupSocketListeners = useCallback((mediaStream: MediaStream) => {
+    if (!socketRef.current) return;
+
+    socketRef.current.on("connect_error", (err) => {
+      console.error("Connection error:", err);
+      setErrorMsg(
+        "Unable to connect to meeting server. Please try again later."
+      );
+    });
+
+    socketRef.current.on("room-users", (users: User[]) => {
+      // Create peers for all users already in the room
+      const peersArray: PeerObject[] = [];
+
+      users.forEach((user: User) => {
+        if (user.id !== socketRef.current?.id) {
+          const peer = createPeer(
+            user.id,
+            socketRef.current?.id || "",
+            mediaStream
+          );
+
+          peersRef.current.push({
+            id: user.id,
+            name: user.name,
+            peer,
+          });
+
+          peersArray.push({
+            id: user.id,
+            name: user.name,
+            peer,
+          });
+        }
+      });
+
+      setPeers(peersArray);
+    });
+
+    socketRef.current.on("user-joined", (payload: UserJoinedPayload) => {
+      // Create peer for the new user
+      const peer = addPeer(payload.signal, payload.callerId, mediaStream);
+
+      peersRef.current.push({
+        id: payload.callerId,
+        name: payload.callerName,
+        peer,
+      });
+
+      setPeers((prev) => [
+        ...prev,
+        {
+          id: payload.callerId,
+          name: payload.callerName,
+          peer,
+        },
+      ]);
+    });
+
+    socketRef.current.on(
+      "receiving-returned-signal",
+      (payload: ReturnedSignalPayload) => {
+        // Find the peer and signal them back
+        const item = peersRef.current.find((p) => p.id === payload.id);
+        if (item) {
+          item.peer.signal(payload.signal);
+        }
+      }
+    );
+
+    socketRef.current.on("user-left", (userId: string) => {
+      // Remove the peer that left
+      const peerObj = peersRef.current.find((p) => p.id === userId);
+      if (peerObj) {
+        peerObj.peer.destroy();
+      }
+
+      const newPeers = peersRef.current.filter((p) => p.id !== userId);
+      peersRef.current = newPeers;
+      setPeers(newPeers);
+    });
+  }, []);
 
   const joinRoom = async () => {
     if (!nameInput.trim()) {
@@ -122,6 +217,16 @@ export default function VideoChat() {
     setRoom(roomInput);
 
     try {
+      // Initialize socket only when joining
+      if (!socketRef.current) {
+        socketRef.current = io("https://socketio-group-server.onrender.com", {
+          reconnectionAttempts: 5,
+          reconnectionDelay: 5000,
+          reconnectionDelayMax: 5000,
+          timeout: 10000,
+        });
+      }
+
       // Get camera/mic permissions with constraints for better quality
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -141,82 +246,14 @@ export default function VideoChat() {
         myVideo.current.srcObject = mediaStream;
       }
 
-      socketRef.current?.emit("join-room", {
+      // Set up socket listeners with the media stream
+      setupSocketListeners(mediaStream);
+
+      // Join the room
+      socketRef.current.emit("join-room", {
         roomId: roomInput,
         userId: socketRef.current.id,
         userName: nameInput,
-      });
-
-      socketRef.current?.on("room-users", (users: User[]) => {
-        // Create peers for all users already in the room
-        const peersArray: PeerObject[] = [];
-
-        users.forEach((user: User) => {
-          if (user.id !== socketRef.current?.id) {
-            const peer = createPeer(
-              user.id,
-              socketRef.current?.id || "",
-              mediaStream
-            );
-
-            peersRef.current.push({
-              id: user.id,
-              name: user.name,
-              peer,
-            });
-
-            peersArray.push({
-              id: user.id,
-              name: user.name,
-              peer,
-            });
-          }
-        });
-
-        setPeers(peersArray);
-      });
-
-      socketRef.current?.on("user-joined", (payload: UserJoinedPayload) => {
-        // Create peer for the new user
-        const peer = addPeer(payload.signal, payload.callerId, mediaStream);
-
-        peersRef.current.push({
-          id: payload.callerId,
-          name: payload.callerName,
-          peer,
-        });
-
-        setPeers((prev) => [
-          ...prev,
-          {
-            id: payload.callerId,
-            name: payload.callerName,
-            peer,
-          },
-        ]);
-      });
-
-      socketRef.current?.on(
-        "receiving-returned-signal",
-        (payload: ReturnedSignalPayload) => {
-          // Find the peer and signal them back
-          const item = peersRef.current.find((p) => p.id === payload.id);
-          if (item) {
-            item.peer.signal(payload.signal);
-          }
-        }
-      );
-
-      socketRef.current?.on("user-left", (userId: string) => {
-        // Remove the peer that left
-        const peerObj = peersRef.current.find((p) => p.id === userId);
-        if (peerObj) {
-          peerObj.peer.destroy();
-        }
-
-        const newPeers = peersRef.current.filter((p) => p.id !== userId);
-        peersRef.current = newPeers;
-        setPeers(newPeers);
       });
 
       setInRoom(true);
@@ -228,71 +265,73 @@ export default function VideoChat() {
     }
   };
 
-  const createPeer = (
-    userToSignal: string,
-    callerId: string,
-    stream: MediaStream
-  ) => {
-    const peer = new Peer({
-      initiator: true,
-      trickle: false,
-      stream,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:global.stun.twilio.com:3478" },
-        ],
-      },
-    });
-
-    peer.on("signal", (signal) => {
-      socketRef.current?.emit("sending-signal", {
-        userToSignal,
-        callerId,
-        callerName: myName,
-        signal,
+  const createPeer = useCallback(
+    (userToSignal: string, callerId: string, stream: MediaStream) => {
+      const peer = new Peer({
+        initiator: true,
+        trickle: false,
+        stream,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com:3478" },
+          ],
+        },
       });
-    });
 
-    peer.on("error", (err) => {
-      console.error("Peer connection error:", err);
-    });
-
-    return peer;
-  };
-
-  const addPeer = (
-    incomingSignal: Peer.SignalData,
-    callerId: string,
-    stream: MediaStream
-  ) => {
-    const peer = new Peer({
-      initiator: false,
-      trickle: false,
-      stream,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:global.stun.twilio.com:3478" },
-        ],
-      },
-    });
-
-    peer.on("signal", (signal) => {
-      socketRef.current?.emit("returning-signal", {
-        signal,
-        callerId,
+      peer.on("signal", (signal) => {
+        socketRef.current?.emit("sending-signal", {
+          userToSignal,
+          callerId,
+          callerName: myName,
+          signal,
+        });
       });
-    });
 
-    peer.on("error", (err) => {
-      console.error("Peer connection error:", err);
-    });
+      peer.on("error", (err) => {
+        console.error("Peer connection error:", err);
+      });
 
-    peer.signal(incomingSignal);
+      return peer;
+    },
+    [myName]
+  );
 
-    return peer;
-  };
+  const addPeer = useCallback(
+    (
+      incomingSignal: Peer.SignalData,
+      callerId: string,
+      stream: MediaStream
+    ) => {
+      const peer = new Peer({
+        initiator: false,
+        trickle: false,
+        stream,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com:3478" },
+          ],
+        },
+      });
+
+      peer.on("signal", (signal) => {
+        socketRef.current?.emit("returning-signal", {
+          signal,
+          callerId,
+        });
+      });
+
+      peer.on("error", (err) => {
+        console.error("Peer connection error:", err);
+      });
+
+      peer.signal(incomingSignal);
+
+      return peer;
+    },
+    []
+  );
 
   const shareScreen = async () => {
     if (!isScreenSharing) {
@@ -341,7 +380,7 @@ export default function VideoChat() {
     }
   };
 
-  const stopScreenSharing = () => {
+  const stopScreenSharing = useCallback(() => {
     if (screenStream) {
       screenStream.getTracks().forEach((track) => track.stop());
 
@@ -371,7 +410,7 @@ export default function VideoChat() {
       setScreenStream(null);
       setIsScreenSharing(false);
     }
-  };
+  }, [screenStream]);
 
   const toggleMute = () => {
     if (streamRef.current) {
@@ -579,6 +618,7 @@ const RemoteVideo = ({ peer }: { peer: Peer.Instance }) => {
     };
   }, [peer]);
 
+  // Video element JSX would go here...
   return (
     <video
       playsInline
