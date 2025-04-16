@@ -1,103 +1,535 @@
-import Image from "next/image";
+// pages/video-chat.tsx
+'use client'
 
-export default function Home() {
+import { useEffect, useRef, useState } from 'react'
+import Peer from 'simple-peer'
+import { io } from 'socket.io-client'
+
+export default function VideoChat() {
+  const [myName, setMyName] = useState('')
+  const [nameInput, setNameInput] = useState('')
+  const [room, setRoom] = useState('')
+  const [roomInput, setRoomInput] = useState('')
+  const [inRoom, setInRoom] = useState(false)
+  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [peers, setPeers] = useState<{
+    id: string,
+    name: string,
+    peer: Peer.Instance
+  }[]>([])
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [isMuted, setIsMuted] = useState(false)
+  const [isVideoOff, setIsVideoOff] = useState(false)
+
+  const myVideo = useRef<HTMLVideoElement>(null)
+  const socketRef = useRef<any>(null)
+  const peersRef = useRef<{
+    id: string,
+    name: string,
+    peer: Peer.Instance
+  }[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
+
+  useEffect(() => {
+    // Connect to signaling server
+    socketRef.current = io("https://socketio-group-server.onrender.com") // Replace with your local IP
+
+    return () => {
+      leaveRoom()
+      socketRef.current?.disconnect()
+    }
+  }, [])
+
+  // Update streamRef when stream changes
+  useEffect(() => {
+    streamRef.current = stream
+  }, [stream])
+
+  // Make sure video element is updated when stream is available
+  useEffect(() => {
+    if (stream && myVideo.current) {
+      myVideo.current.srcObject = stream
+    }
+  }, [stream, myVideo])
+
+  const joinRoom = async () => {
+    if (!nameInput.trim()) {
+      setErrorMsg('Please enter your name')
+      return
+    }
+    
+    if (!roomInput.trim()) {
+      setErrorMsg('Please enter a room code')
+      return
+    }
+
+    setErrorMsg('')
+    setMyName(nameInput)
+    setRoom(roomInput)
+
+    try {
+      // Get camera/mic permissions with constraints for better quality
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        }, 
+        audio: true 
+      })
+      
+      // Store stream in state and ref
+      setStream(mediaStream)
+      streamRef.current = mediaStream
+      
+      // Set the stream to video element directly
+      if (myVideo.current) {
+        myVideo.current.srcObject = mediaStream
+      }
+
+      socketRef.current.emit('join-room', { 
+        roomId: roomInput,
+        userId: socketRef.current.id,
+        userName: nameInput
+      })
+
+      socketRef.current.on('room-users', (users: any) => {
+        // Create peers for all users already in the room
+        const peersArray: any[] = []
+        
+        users.forEach((user: any) => {
+          if (user.id !== socketRef.current.id) {
+            const peer = createPeer(user.id, socketRef.current.id, mediaStream)
+            
+            peersRef.current.push({
+              id: user.id,
+              name: user.name,
+              peer
+            })
+            
+            peersArray.push({
+              id: user.id,
+              name: user.name,
+              peer
+            })
+          }
+        })
+        
+        setPeers(peersArray)
+      })
+
+      socketRef.current.on('user-joined', (payload: any) => {
+        // Create peer for the new user
+        const peer = addPeer(payload.signal, payload.callerId, mediaStream)
+        
+        peersRef.current.push({
+          id: payload.callerId,
+          name: payload.callerName,
+          peer
+        })
+        
+        setPeers(prev => [...prev, {
+          id: payload.callerId,
+          name: payload.callerName,
+          peer
+        }])
+      })
+
+      socketRef.current.on('receiving-returned-signal', (payload: any) => {
+        // Find the peer and signal them back
+        const item = peersRef.current.find(p => p.id === payload.id)
+        if (item) {
+          item.peer.signal(payload.signal)
+        }
+      })
+
+      socketRef.current.on('user-left', (userId: string) => {
+        // Remove the peer that left
+        const peerObj = peersRef.current.find(p => p.id === userId)
+        if (peerObj) {
+          peerObj.peer.destroy()
+        }
+        
+        const newPeers = peersRef.current.filter(p => p.id !== userId)
+        peersRef.current = newPeers
+        setPeers(newPeers)
+      })
+
+      setInRoom(true)
+    } catch (err) {
+      console.error("Error accessing media devices:", err)
+      setErrorMsg("Cannot access camera and microphone. Please check permissions.")
+    }
+  }
+
+  const createPeer = (userToSignal: string, callerId: string, stream: MediaStream) => {
+    const peer = new Peer({
+      initiator: true,
+      trickle: false,
+      stream,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' }
+        ]
+      }
+    })
+
+    peer.on('signal', signal => {
+      socketRef.current.emit('sending-signal', { 
+        userToSignal, 
+        callerId, 
+        callerName: myName,
+        signal 
+      })
+    })
+
+    peer.on('error', (err) => {
+      console.error('Peer connection error:', err)
+    })
+
+    return peer
+  }
+
+  const addPeer = (incomingSignal: any, callerId: string, stream: MediaStream) => {
+    const peer = new Peer({
+      initiator: false,
+      trickle: false,
+      stream,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' }
+        ]
+      }
+    })
+
+    peer.on('signal', signal => {
+      socketRef.current.emit('returning-signal', { 
+        signal, 
+        callerId 
+      })
+    })
+    
+    peer.on('error', (err) => {
+      console.error('Peer connection error:', err)
+    })
+
+    peer.signal(incomingSignal)
+
+    return peer
+  }
+
+  const leaveRoom = () => {
+    // Clean up
+    if (socketRef.current) {
+      socketRef.current.emit('leave-room', { roomId: room })
+    }
+    
+    // Close all peer connections
+    peersRef.current.forEach(peerObj => {
+      peerObj.peer.destroy()
+    })
+    
+    // Stop all tracks from the stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+    }
+    
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop())
+    }
+    
+    setPeers([])
+    peersRef.current = []
+    setStream(null)
+    streamRef.current = null
+    setScreenStream(null)
+    setIsScreenSharing(false)
+    setInRoom(false)
+    setIsMuted(false)
+    setIsVideoOff(false)
+  }
+
+  const shareScreen = async () => {
+    if (!isScreenSharing) {
+      try {
+        const screenCaptureStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: 'always'
+          },
+          audio: false
+        })
+        
+        setScreenStream(screenCaptureStream)
+        
+        // Replace the video track for all peers
+        const videoTrack = screenCaptureStream.getVideoTracks()[0]
+        
+        peersRef.current.forEach(({ peer }) => {
+          // Find the sender for the video track and replace it
+          const sender = peer._pc.getSenders().find((s: any) => 
+            s.track && s.track.kind === 'video'
+          )
+          
+          if (sender) {
+            sender.replaceTrack(videoTrack)
+          }
+        })
+        
+        // Replace local video display
+        if (myVideo.current) {
+          myVideo.current.srcObject = screenCaptureStream
+        }
+        
+        // Handle when screen sharing stops
+        videoTrack.onended = () => {
+          stopScreenSharing()
+        }
+        
+        setIsScreenSharing(true)
+      } catch (err) {
+        console.error("Error sharing screen:", err)
+        setErrorMsg("Failed to share screen. Please try again.")
+      }
+    } else {
+      stopScreenSharing()
+    }
+  }
+  
+  const stopScreenSharing = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop())
+      
+      // Switch back to camera for all peers
+      if (streamRef.current) {
+        const videoTrack = streamRef.current.getVideoTracks()[0]
+        
+        peersRef.current.forEach(({ peer }) => {
+          const sender = peer._pc.getSenders().find((s: any) => 
+            s.track && s.track.kind === 'video'
+          )
+          
+          if (sender && videoTrack) {
+            sender.replaceTrack(videoTrack)
+          }
+        })
+        
+        // Switch back camera for local video
+        if (myVideo.current) {
+          myVideo.current.srcObject = streamRef.current
+        }
+      }
+      
+      setScreenStream(null)
+      setIsScreenSharing(false)
+    }
+  }
+
+  const toggleMute = () => {
+    if (streamRef.current) {
+      const audioTracks = streamRef.current.getAudioTracks()
+      if (audioTracks.length > 0) {
+        const enabled = !audioTracks[0].enabled
+        audioTracks[0].enabled = enabled
+        setIsMuted(!enabled)
+      }
+    }
+  }
+
+  const toggleVideo = () => {
+    if (streamRef.current) {
+      const videoTracks = streamRef.current.getVideoTracks()
+      if (videoTracks.length > 0) {
+        const enabled = !videoTracks[0].enabled
+        videoTracks[0].enabled = enabled
+        setIsVideoOff(!enabled)
+      }
+    }
+  }
+
+  // Helper to safely get video dimensions
+  const getVideoDisplayStyle = () => {
+    return { 
+      height: '180px',
+      background: 'black',
+      borderRadius: '4px',
+      overflow: 'hidden',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+      <h1 className="text-2xl font-bold mb-6">Simple Video Chat</h1>
+      
+      {errorMsg && (
+        <div className="w-full max-w-4xl bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {errorMsg}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+      
+      {!inRoom ? (
+        <div className="w-full max-w-md bg-white p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-4">Join a Meeting</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Enter your name"
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Room Code</label>
+              <input
+                type="text"
+                value={roomInput}
+                onChange={(e) => setRoomInput(e.target.value)}
+                placeholder="Enter room code or create new"
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            
+            <button
+              onClick={joinRoom}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+            >
+              Join
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full max-w-4xl">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Room: {room}</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(room);
+                }}
+                className="bg-gray-200 p-2 rounded-full hover:bg-gray-300"
+                title="Copy room code"
+              >
+                📋
+              </button>
+              <button
+                onClick={leaveRoom}
+                className="bg-red-600 text-white py-1 px-4 rounded hover:bg-red-700"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {/* My Video */}
+            <div className="bg-white p-2 rounded-lg shadow">
+              <div className="relative" style={getVideoDisplayStyle()}>
+                {stream ? (
+                  <video 
+                    playsInline 
+                    muted 
+                    ref={myVideo} 
+                    autoPlay 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-white">Loading camera...</div>
+                )}
+                <div className="absolute bottom-2 left-2 bg-gray-800 text-white px-2 py-1 text-sm rounded">
+                  {myName} (You) {isMuted && '🔇'} {isVideoOff && '📵'}
+                </div>
+              </div>
+            </div>
+            
+            {/* Other participants */}
+            {peers.map((peer) => (
+              <div key={peer.id} className="bg-white p-2 rounded-lg shadow">
+                <div className="relative" style={getVideoDisplayStyle()}>
+                  <RemoteVideo peer={peer.peer} />
+                  <div className="absolute bottom-2 left-2 bg-gray-800 text-white px-2 py-1 text-sm rounded">
+                    {peer.name}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Controls */}
+          <div className="fixed bottom-4 left-0 right-0 flex justify-center">
+            <div className="bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-4">
+              <button
+                onClick={toggleMute}
+                className={`p-3 rounded-full ${isMuted ? 'bg-red-200 hover:bg-red-300' : 'bg-gray-200 hover:bg-gray-300'}`}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? '🔇' : '🎤'}
+              </button>
+              
+              <button
+                onClick={toggleVideo}
+                className={`p-3 rounded-full ${isVideoOff ? 'bg-red-200 hover:bg-red-300' : 'bg-gray-200 hover:bg-gray-300'}`}
+                title={isVideoOff ? "Turn on camera" : "Turn off camera"}
+              >
+                {isVideoOff ? '📵' : '📹'}
+              </button>
+              
+              <button
+                onClick={shareScreen}
+                className={`p-3 rounded-full ${isScreenSharing ? 'bg-blue-200 hover:bg-blue-300' : 'bg-gray-200 hover:bg-gray-300'}`}
+                title={isScreenSharing ? "Stop sharing" : "Share screen"}
+              >
+                {isScreenSharing ? '📤' : '📺'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+// Video component for remote peers - separated for better performance
+const RemoteVideo = ({ peer }: { peer: Peer.Instance }) => {
+  const ref = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    if (!peer) return;
+
+    const handleStream = (stream: MediaStream) => {
+      if (ref.current) {
+        ref.current.srcObject = stream;
+      }
+    };
+
+    // Handle existing stream if peer already has one
+    if (peer.streams && peer.streams[0]) {
+      handleStream(peer.streams[0]);
+    }
+
+    // Also listen for future stream events
+    peer.on('stream', handleStream);
+
+    return () => {
+      peer.off('stream', handleStream);
+    };
+  }, [peer]);
+
+  return (
+    <video 
+      playsInline 
+      autoPlay 
+      ref={ref} 
+      className="w-full h-full object-cover" 
+    />
   );
 }
