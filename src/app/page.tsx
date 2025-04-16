@@ -2,7 +2,36 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Peer from "simple-peer";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
+
+// Define interfaces for type safety
+interface PeerObject {
+  id: string;
+  name: string;
+  peer: Peer.Instance;
+}
+
+interface User {
+  id: string;
+  name: string;
+}
+
+interface UserJoinedPayload {
+  signal: Peer.SignalData;
+  callerId: string;
+  callerName: string;
+}
+
+interface ReturnedSignalPayload {
+  id: string;
+  signal: Peer.SignalData;
+}
+
+interface RTCPeerConnectionSender {
+  track: MediaStreamTrack | null;
+  kind: string;
+  replaceTrack: (track: MediaStreamTrack) => Promise<void>;
+}
 
 export default function VideoChat() {
   const [myName, setMyName] = useState("");
@@ -11,13 +40,7 @@ export default function VideoChat() {
   const [roomInput, setRoomInput] = useState("");
   const [inRoom, setInRoom] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [peers, setPeers] = useState<
-    {
-      id: string;
-      name: string;
-      peer: Peer.Instance;
-    }[]
-  >([]);
+  const [peers, setPeers] = useState<PeerObject[]>([]);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -25,15 +48,41 @@ export default function VideoChat() {
   const [isVideoOff, setIsVideoOff] = useState(false);
 
   const myVideo = useRef<HTMLVideoElement>(null);
-  const socketRef = useRef<any>(null);
-  const peersRef = useRef<
-    {
-      id: string;
-      name: string;
-      peer: Peer.Instance;
-    }[]
-  >([]);
+  const socketRef = useRef<Socket | null>(null);
+  const peersRef = useRef<PeerObject[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Function to leave the room - define it outside useEffect so it can be referenced
+  const leaveRoom = () => {
+    // Clean up
+    if (socketRef.current) {
+      socketRef.current.emit("leave-room", { roomId: room });
+    }
+
+    // Close all peer connections
+    peersRef.current.forEach((peerObj) => {
+      peerObj.peer.destroy();
+    });
+
+    // Stop all tracks from the stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+    }
+
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+    }
+
+    setPeers([]);
+    peersRef.current = [];
+    setStream(null);
+    streamRef.current = null;
+    setScreenStream(null);
+    setIsScreenSharing(false);
+    setInRoom(false);
+    setIsMuted(false);
+    setIsVideoOff(false);
+  };
 
   useEffect(() => {
     // Connect to signaling server
@@ -43,7 +92,7 @@ export default function VideoChat() {
       leaveRoom();
       socketRef.current?.disconnect();
     };
-  }, []);
+  }, [leaveRoom]); // Added leaveRoom to dependencies
 
   // Update streamRef when stream changes
   useEffect(() => {
@@ -92,19 +141,23 @@ export default function VideoChat() {
         myVideo.current.srcObject = mediaStream;
       }
 
-      socketRef.current.emit("join-room", {
+      socketRef.current?.emit("join-room", {
         roomId: roomInput,
         userId: socketRef.current.id,
         userName: nameInput,
       });
 
-      socketRef.current.on("room-users", (users: any) => {
+      socketRef.current?.on("room-users", (users: User[]) => {
         // Create peers for all users already in the room
-        const peersArray: any[] = [];
+        const peersArray: PeerObject[] = [];
 
-        users.forEach((user: any) => {
-          if (user.id !== socketRef.current.id) {
-            const peer = createPeer(user.id, socketRef.current.id, mediaStream);
+        users.forEach((user: User) => {
+          if (user.id !== socketRef.current?.id) {
+            const peer = createPeer(
+              user.id,
+              socketRef.current?.id || "",
+              mediaStream
+            );
 
             peersRef.current.push({
               id: user.id,
@@ -123,7 +176,7 @@ export default function VideoChat() {
         setPeers(peersArray);
       });
 
-      socketRef.current.on("user-joined", (payload: any) => {
+      socketRef.current?.on("user-joined", (payload: UserJoinedPayload) => {
         // Create peer for the new user
         const peer = addPeer(payload.signal, payload.callerId, mediaStream);
 
@@ -143,15 +196,18 @@ export default function VideoChat() {
         ]);
       });
 
-      socketRef.current.on("receiving-returned-signal", (payload: any) => {
-        // Find the peer and signal them back
-        const item = peersRef.current.find((p) => p.id === payload.id);
-        if (item) {
-          item.peer.signal(payload.signal);
+      socketRef.current?.on(
+        "receiving-returned-signal",
+        (payload: ReturnedSignalPayload) => {
+          // Find the peer and signal them back
+          const item = peersRef.current.find((p) => p.id === payload.id);
+          if (item) {
+            item.peer.signal(payload.signal);
+          }
         }
-      });
+      );
 
-      socketRef.current.on("user-left", (userId: string) => {
+      socketRef.current?.on("user-left", (userId: string) => {
         // Remove the peer that left
         const peerObj = peersRef.current.find((p) => p.id === userId);
         if (peerObj) {
@@ -190,7 +246,7 @@ export default function VideoChat() {
     });
 
     peer.on("signal", (signal) => {
-      socketRef.current.emit("sending-signal", {
+      socketRef.current?.emit("sending-signal", {
         userToSignal,
         callerId,
         callerName: myName,
@@ -206,7 +262,7 @@ export default function VideoChat() {
   };
 
   const addPeer = (
-    incomingSignal: any,
+    incomingSignal: Peer.SignalData,
     callerId: string,
     stream: MediaStream
   ) => {
@@ -223,7 +279,7 @@ export default function VideoChat() {
     });
 
     peer.on("signal", (signal) => {
-      socketRef.current.emit("returning-signal", {
+      socketRef.current?.emit("returning-signal", {
         signal,
         callerId,
       });
@@ -238,47 +294,13 @@ export default function VideoChat() {
     return peer;
   };
 
-  const leaveRoom = () => {
-    // Clean up
-    if (socketRef.current) {
-      socketRef.current.emit("leave-room", { roomId: room });
-    }
-
-    // Close all peer connections
-    peersRef.current.forEach((peerObj) => {
-      peerObj.peer.destroy();
-    });
-
-    // Stop all tracks from the stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
-
-    if (screenStream) {
-      screenStream.getTracks().forEach((track) => track.stop());
-    }
-
-    setPeers([]);
-    peersRef.current = [];
-    setStream(null);
-    streamRef.current = null;
-    setScreenStream(null);
-    setIsScreenSharing(false);
-    setInRoom(false);
-    setIsMuted(false);
-    setIsVideoOff(false);
-  };
-
   const shareScreen = async () => {
     if (!isScreenSharing) {
       try {
         const screenCaptureStream =
-          await navigator.mediaDevices.getDisplayMedia({
-            video: {
-              cursor: "always",
-            },
+          (await navigator.mediaDevices.getDisplayMedia({
             audio: false,
-          });
+          })) as MediaStream;
 
         setScreenStream(screenCaptureStream);
 
@@ -287,9 +309,12 @@ export default function VideoChat() {
 
         peersRef.current.forEach(({ peer }) => {
           // Find the sender for the video track and replace it
-          const sender = peer._pc
+          const sender = (peer as any)._pc
             .getSenders()
-            .find((s: any) => s.track && s.track.kind === "video");
+            .find(
+              (s: RTCPeerConnectionSender) =>
+                s.track && s.track.kind === "video"
+            );
 
           if (sender) {
             sender.replaceTrack(videoTrack);
@@ -325,9 +350,12 @@ export default function VideoChat() {
         const videoTrack = streamRef.current.getVideoTracks()[0];
 
         peersRef.current.forEach(({ peer }) => {
-          const sender = peer._pc
+          const sender = (peer as any)._pc
             .getSenders()
-            .find((s: any) => s.track && s.track.kind === "video");
+            .find(
+              (s: RTCPeerConnectionSender) =>
+                s.track && s.track.kind === "video"
+            );
 
           if (sender && videoTrack) {
             sender.replaceTrack(videoTrack);
