@@ -46,84 +46,47 @@ export default function VideoChat() {
   const [errorMsg, setErrorMsg] = useState("");
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
 
   const myVideo = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const peersRef = useRef<PeerObject[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Clean up peer connections
-  const cleanupPeers = useCallback(() => {
-    peersRef.current.forEach((peerObj) => {
-      if (peerObj.peer) {
-        try {
-          peerObj.peer.destroy();
-        } catch (err) {
-          console.error("Error destroying peer:", err);
-        }
-      }
-    });
-    peersRef.current = [];
-    setPeers([]);
-  }, []);
+  // Stabilize the leaveRoom function with useCallback
+  const leaveRoom = useCallback(() => {
+    // Clean up
+    if (socketRef.current) {
+      socketRef.current.emit("leave-room", { roomId: room });
+      socketRef.current.off("room-users");
+      socketRef.current.off("user-joined");
+      socketRef.current.off("receiving-returned-signal");
+      socketRef.current.off("user-left");
+    }
 
-  // Clean up media streams
-  const cleanupStreams = useCallback(() => {
+    // Close all peer connections
+    peersRef.current.forEach((peerObj) => {
+      peerObj.peer.destroy();
+    });
+
+    // Stop all tracks from the stream
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch (err) {
-          console.error("Error stopping track:", err);
-        }
-      });
-      streamRef.current = null;
-      setStream(null);
+      streamRef.current.getTracks().forEach((track) => track.stop());
     }
 
     if (screenStream) {
-      screenStream.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch (err) {
-          console.error("Error stopping screen track:", err);
-        }
-      });
-      setScreenStream(null);
-    }
-  }, [screenStream]);
-
-  // Stabilize the leaveRoom function with useCallback
-  const leaveRoom = useCallback(() => {
-    // Emit leave room event if socket is connected
-    if (socketRef.current && socketConnected) {
-      try {
-        socketRef.current.emit("leave-room", { roomId: room });
-        // Remove all listeners to prevent memory leaks
-        socketRef.current.off("room-users");
-        socketRef.current.off("user-joined");
-        socketRef.current.off("receiving-returned-signal");
-        socketRef.current.off("user-left");
-        socketRef.current.off("connect_error");
-        socketRef.current.off("connect");
-        socketRef.current.off("disconnect");
-      } catch (err) {
-        console.error("Error during socket cleanup:", err);
-      }
+      screenStream.getTracks().forEach((track) => track.stop());
     }
 
-    // Clean up peers and streams
-    cleanupPeers();
-    cleanupStreams();
-
-    // Reset state
+    setPeers([]);
+    peersRef.current = [];
+    setStream(null);
+    streamRef.current = null;
+    setScreenStream(null);
     setIsScreenSharing(false);
     setInRoom(false);
     setIsMuted(false);
     setIsVideoOff(false);
-    setSocketConnected(false);
-  }, [room, cleanupPeers, cleanupStreams, socketConnected]);
+  }, [room, screenStream]);
 
   // Update streamRef when stream changes
   useEffect(() => {
@@ -302,24 +265,6 @@ export default function VideoChat() {
     }
   };
 
-  // Make sure video element is updated when stream is available
-  useEffect(() => {
-    if (stream && myVideo.current) {
-      myVideo.current.srcObject = stream;
-    }
-  }, [stream]);
-
-  // Clean up on component unmount
-  useEffect(() => {
-    return () => {
-      leaveRoom();
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-    };
-  }, [leaveRoom]);
-
   const createPeer = useCallback(
     (userToSignal: string, callerId: string, stream: MediaStream) => {
       const peer = new Peer({
@@ -335,14 +280,12 @@ export default function VideoChat() {
       });
 
       peer.on("signal", (signal) => {
-        if (socketRef.current && socketConnected) {
-          socketRef.current.emit("sending-signal", {
-            userToSignal,
-            callerId,
-            callerName: myName,
-            signal,
-          });
-        }
+        socketRef.current?.emit("sending-signal", {
+          userToSignal,
+          callerId,
+          callerName: myName,
+          signal,
+        });
       });
 
       peer.on("error", (err) => {
@@ -351,7 +294,7 @@ export default function VideoChat() {
 
       return peer;
     },
-    [myName, socketConnected]
+    [myName]
   );
 
   const addPeer = useCallback(
@@ -373,12 +316,10 @@ export default function VideoChat() {
       });
 
       peer.on("signal", (signal) => {
-        if (socketRef.current && socketConnected) {
-          socketRef.current.emit("returning-signal", {
-            signal,
-            callerId,
-          });
-        }
+        socketRef.current?.emit("returning-signal", {
+          signal,
+          callerId,
+        });
       });
 
       peer.on("error", (err) => {
@@ -386,9 +327,10 @@ export default function VideoChat() {
       });
 
       peer.signal(incomingSignal);
+
       return peer;
     },
-    [socketConnected]
+    []
   );
 
   const shareScreen = async () => {
@@ -651,29 +593,16 @@ export default function VideoChat() {
 }
 
 // Video component for remote peers - separated for better performance
-// Video component for remote peers - separated for better performance
 const RemoteVideo = ({ peer }: { peer: Peer.Instance }) => {
   const ref = useRef<HTMLVideoElement>(null);
-  const [hasStream, setHasStream] = useState(false);
 
   useEffect(() => {
     if (!peer) return;
 
     const handleStream = (stream: MediaStream) => {
       if (ref.current) {
-        try {
-          ref.current.srcObject = stream;
-          setHasStream(true);
-        } catch (err) {
-          console.error("Error setting remote video stream:", err);
-        }
+        ref.current.srcObject = stream;
       }
-    };
-
-    // Set up error handler
-    const handleError = (err: Error) => {
-      console.error("Remote peer error:", err);
-      setHasStream(false);
     };
 
     // Handle existing stream if peer already has one
@@ -683,27 +612,19 @@ const RemoteVideo = ({ peer }: { peer: Peer.Instance }) => {
 
     // Also listen for future stream events
     peer.on("stream", handleStream);
-    peer.on("error", handleError);
 
     return () => {
       peer.off("stream", handleStream);
-      peer.off("error", handleError);
     };
   }, [peer]);
 
+  // Video element JSX would go here...
   return (
-    <>
-      <video
-        playsInline
-        autoPlay
-        ref={ref}
-        className="w-full h-full object-cover"
-      />
-      {!hasStream && (
-        <div className="absolute inset-0 flex items-center justify-center text-white">
-          Connecting...
-        </div>
-      )}
-    </>
+    <video
+      playsInline
+      autoPlay
+      ref={ref}
+      className="w-full h-full object-cover"
+    />
   );
 };
