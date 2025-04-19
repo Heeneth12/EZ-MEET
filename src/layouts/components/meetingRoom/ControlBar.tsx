@@ -2,7 +2,14 @@
 import React from "react";
 import { Clock, MicOff, Mic, VideoOff, Video, Monitor, Smile, Hand, MoreVertical, Phone, Grid, Layout, MessageSquare, Users, Minimize, Maximize } from "lucide-react";
 
-export default function ControlBar() {
+
+export default function ControlBar( 
+  props: {
+    leaveRoom: () => void;
+    showChat: boolean;
+    setShowChat: (show: boolean) => void;
+  }
+) {
   // State variables for various controls
   const [isMuted, setIsMuted] = React.useState(false);
   const [isVideoOff, setIsVideoOff] = React.useState(false);
@@ -14,7 +21,6 @@ export default function ControlBar() {
   const [liveCaptions, setLiveCaptions] = React.useState(false);
   const [isRecording, setIsRecording] = React.useState(false);
   const [layout, setLayout] = React.useState("grid");
-  const [showChat, setShowChat] = React.useState(false);
   const [showParticipants, setShowParticipants] = React.useState(false);
   const [isFullScreen, setIsFullScreen] = React.useState(false);
 
@@ -208,7 +214,7 @@ export default function ControlBar() {
         </div>
 
         {/* End call */}
-        <button className="p-3 rounded-full bg-red-600 hover:bg-red-700">
+        <button  onClick={props.leaveRoom} className="p-3 rounded-full bg-red-600 hover:bg-red-700">
           <Phone size={20} />
         </button>
       </div>
@@ -248,11 +254,11 @@ export default function ControlBar() {
         {/* Chat toggle */}
         <button
           onClick={() => {
-            setShowChat(!showChat);
-            if (showParticipants && !showChat) setShowParticipants(false);
+            props.setShowChat(!props.showChat);
+            if (showParticipants && !props.showChat) setShowParticipants(false);
           }}
           className={`p-2 rounded-lg ${
-            showChat
+            props.showChat
               ? "bg-blue-600 hover:bg-blue-700"
               : "bg-gray-700 hover:bg-gray-600"
           }`}>
@@ -263,7 +269,7 @@ export default function ControlBar() {
         <button
           onClick={() => {
             setShowParticipants(!showParticipants);
-            if (showChat && !showParticipants) setShowChat(false);
+            if (props.showChat && !showParticipants) props.setShowChat(false);
           }}
           className={`p-2 rounded-lg ${
             showParticipants

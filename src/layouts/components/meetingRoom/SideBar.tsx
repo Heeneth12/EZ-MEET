@@ -2,9 +2,11 @@
 import { X, MicOff, VideoOff, Volume2, MoreVertical } from "lucide-react";
 import React from "react";
 
-export default function SideBar() {
+export default function SideBar(props: {
+  showChat: boolean;
+  setShowChat: (show: boolean) => void;
+}) {
   // State management
-  const [showChat, setShowChat] = React.useState(true);
   const [showParticipants, setShowParticipants] = React.useState(false);
   const [newMessage, setNewMessage] = React.useState("");
   const [messages, setMessages] = React.useState([
@@ -62,15 +64,15 @@ export default function SideBar() {
   return (
     <div
       className={`flex flex-col ${
-        showChat || showParticipants ? "w-100" : "w-0"
+        props.showChat || showParticipants ? "w-100" : "w-0"
       } transition-width duration-300 ease-in-out bg-gray-800 border-l border-gray-700`}>
       {/* Chat */}
-      {showChat && (
+      {props.showChat && (
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
             <h3 className="font-medium">In-meeting chat</h3>
             <button
-              onClick={() => setShowChat(false)}
+              onClick={() => props.setShowChat(false)}
               className="text-gray-400 hover:text-white">
               <X size={18} />
             </button>
