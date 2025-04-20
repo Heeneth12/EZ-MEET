@@ -25,8 +25,7 @@ const VideoChat: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
-      <Header />
-
+      <Header participantsCount={peers.length} />
       {!joined ? (
         <div className="flex items-center justify-center flex-grow">
           <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
@@ -69,11 +68,11 @@ const VideoChat: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="flex flex-grow overflow-hidden">
+        <div className="flex bg-black flex-grow overflow-hidden">
           {/* Main content area */}
-          <div className="flex-grow relative">
+          <div className="flex-grow relative m-2">
             {/* Meeting info bar */}
-            <div className="absolute top-0 left-0 right-0 bg-white bg-opacity-90 z-10 px-4 py-2 flex justify-between items-center shadow-sm">
+            <div className="absolute rounded-md  top-0 left-0 right-0 bg-white bg-opacity-90 z-10 px-4 py-2 flex justify-between items-center shadow-sm">
               <h2 className="text-lg font-medium text-gray-800">
                 Room: {roomId}
               </h2>
@@ -85,10 +84,10 @@ const VideoChat: React.FC = () => {
             </div>
 
             {/* Video grid */}
-            <div className="p-4 pt-14 h-full overflow-auto">
+            <div className="pt-14 h-full overflow-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
                 {/* My video */}
-                <div className="bg-black rounded-lg overflow-hidden shadow-md aspect-video relative">
+                <div className="bg-black rounded-sm overflow-hidden shadow-md aspect-video relative">
                   <video
                     ref={userVideoRef}
                     muted
@@ -96,7 +95,7 @@ const VideoChat: React.FC = () => {
                     playsInline
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute bottom-3 left-3 bg-black bg-opacity-60 text-white px-3 py-1 rounded-md text-sm font-medium">
+                  <div className="absolute bottom-3 left-3 bg-black bg-opacity-60 text-white px-3 py-1 rounded-sm text-sm font-medium">
                     You ({userName})
                   </div>
                 </div>

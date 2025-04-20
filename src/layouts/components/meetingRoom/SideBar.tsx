@@ -63,9 +63,9 @@ export default function SideBar(props: {
 
   return (
     <div
-      className={`flex flex-col ${
-        props.showChat || showParticipants ? "w-100" : "w-0"
-      } transition-width duration-300 ease-in-out bg-gray-800 border-l border-gray-700`}>
+      className={`bg-gray-800 rounded-sm m-2 flex flex-col ${
+        props.showChat || showParticipants ? "w-110" : "w-0"
+      } transition-width duration-300 ease-in-out`}>
       {/* Chat */}
       {props.showChat && (
         <div className="flex flex-col h-full">
