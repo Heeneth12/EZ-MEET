@@ -8,6 +8,8 @@ export default function ControlBar(
     leaveRoom: () => void;
     showChat: boolean;
     setShowChat: (show: boolean) => void;
+    showParticipants: boolean;
+    setShowParticipants: (show: boolean) => void;
   }
 ) {
   // State variables for various controls
@@ -255,7 +257,7 @@ export default function ControlBar(
         <button
           onClick={() => {
             props.setShowChat(!props.showChat);
-            if (showParticipants && !props.showChat) setShowParticipants(false);
+            if (props.showParticipants && !props.showChat) props.setShowParticipants(false);
           }}
           className={`p-2 rounded-lg ${
             props.showChat
@@ -268,11 +270,11 @@ export default function ControlBar(
         {/* Participants toggle */}
         <button
           onClick={() => {
-            setShowParticipants(!showParticipants);
-            if (props.showChat && !showParticipants) props.setShowChat(false);
+            props.setShowParticipants(!props.showParticipants);
+            if (props.showChat && !props.showParticipants) props.setShowChat(false);
           }}
           className={`p-2 rounded-lg ${
-            showParticipants
+            props.showParticipants
               ? "bg-blue-600 hover:bg-blue-700"
               : "bg-gray-700 hover:bg-gray-600"
           }`}>

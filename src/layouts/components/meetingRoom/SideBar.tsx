@@ -5,9 +5,9 @@ import React from "react";
 export default function SideBar(props: {
   showChat: boolean;
   setShowChat: (show: boolean) => void;
+  showParticipants: boolean;
+  setShowParticipants: (show: boolean) => void;
 }) {
-  // State management
-  const [showParticipants, setShowParticipants] = React.useState(false);
   const [newMessage, setNewMessage] = React.useState("");
   const [messages, setMessages] = React.useState([
     {
@@ -63,8 +63,8 @@ export default function SideBar(props: {
 
   return (
     <div
-      className={`bg-gray-800 rounded-sm m-2 flex flex-col ${
-        props.showChat || showParticipants ? "w-110" : "w-0"
+      className={`bg-gray-800 rounded-sm flex flex-col ${
+        props.showChat || props.showParticipants ? "w-110 m-2" : "w-0"
       } transition-width duration-300 ease-in-out`}>
       {/* Chat */}
       {props.showChat && (
@@ -144,7 +144,7 @@ export default function SideBar(props: {
       )}
 
       {/* Participants */}
-      {showParticipants && (
+      {props.showParticipants && (
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
             <div className="flex items-center">
@@ -154,7 +154,7 @@ export default function SideBar(props: {
               </span>
             </div>
             <button
-              onClick={() => setShowParticipants(false)}
+              onClick={() => props.setShowParticipants(false)}
               className="text-gray-400 hover:text-white">
               <X size={18} />
             </button>

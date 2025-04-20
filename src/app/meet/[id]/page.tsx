@@ -22,6 +22,7 @@ const VideoChat: React.FC = () => {
 
   const [showDebug, setShowDebug] = useState(false);
   const [showChat, setShowChat] = useState(true);
+  const [showParticipants, setShowParticipants] = useState(false);
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
@@ -133,7 +134,12 @@ const VideoChat: React.FC = () => {
             )}
           </div>
           {/* Sidebar (chat, participants, etc.) */}
-          <SideBar showChat={showChat} setShowChat={setShowChat} />
+          <SideBar
+            showChat={showChat}
+            setShowChat={setShowChat}
+            showParticipants={showParticipants}
+            setShowParticipants={setShowParticipants}
+          />
         </div>
       )}
 
@@ -143,6 +149,8 @@ const VideoChat: React.FC = () => {
           leaveRoom={leaveRoom}
           showChat={showChat}
           setShowChat={setShowChat}
+          showParticipants={showParticipants}
+          setShowParticipants={setShowParticipants}
         />
       )}
     </div>
