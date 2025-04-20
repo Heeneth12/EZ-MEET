@@ -1,154 +1,260 @@
-// components/VideoChat.tsx
 "use client";
-import React, { useState } from "react";
-import { useVideoChat } from "../../layouts/hooks/useVideoChat";
-import PeerVideo from "@/layouts/components/meetingRoom/PeerVideo";
-import Header from "@/layouts/components/meetingRoom/Header";
-import ControlBar from "@/layouts/components/meetingRoom/ControlBar";
-import SideBar from "@/layouts/components/meetingRoom/SideBar";
+import React, { useState } from 'react';
+import { Calendar, Video, Users, Link, ChevronLeft, ChevronRight, Info, MessageSquare, Settings, Play, Shield, Clock, Menu, X, PlusCircle } from 'lucide-react';
 
-const VideoChat: React.FC = () => {
-  const {
-    roomId,
-    setRoomId,
-    userName,
-    setUserName,
-    joined,
-    peers,
-    userVideoRef,
-    debug,
-    joinRoom,
-    leaveRoom,
-  } = useVideoChat();
+export default function EzMeetPlatform() {
+  const [meetingCode, setMeetingCode] = useState('');
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [showNewMeetingOptions, setShowNewMeetingOptions] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [recentMeetings] = useState([
+    { id: 'meet-abc-123', name: 'Team Weekly Sync', time: '2 days ago' },
+    { id: 'meet-def-456', name: 'Client Presentation', time: '1 week ago' }
+  ]);
+  
+  const slides = [
+    {
+      title: "Get a link that you can share",
+      description: "Click New meeting to get a link that you can send to people that you want to meet with",
+      icon: <Link className="text-white" size={32} />
+    },
+    {
+      title: "Plan your meetings in advance",
+      description: "Schedule meetings in your calendar and send invitations to participants",
+      icon: <Calendar className="text-white" size={32} />
+    },
+    {
+      title: "Your meeting is safe",
+      description: "No one can join a meeting unless invited or admitted by the host",
+      icon: <Shield className="text-white" size={32} />
+    },
+    {
+      title: "Collaborate with ease",
+      description: "Share screens, use chat, and collaborate on documents in real-time",
+      icon: <MessageSquare className="text-white" size={32} />
+    }
+  ];
 
-  const [showDebug, setShowDebug] = useState(false);
-  const [showChat, setShowChat] = useState(true);
+  const handlePrevSlide = () => {
+    setCurrentSlide((prev) => prev === 0 ? slides.length - 1 : prev - 1);
+  };
+
+  const handleNextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % slides.length);
+  };
+
+  const toggleNewMeetingOptions = () => {
+    setShowNewMeetingOptions(!showNewMeetingOptions);
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
-      <Header />
-
-      {!joined ? (
-        <div className="flex items-center justify-center flex-grow">
-          <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-            <h2 className="text-2xl font-semibold text-center mb-6 text-gray-800">
-              Join Meeting
-            </h2>
-
-            <div className="mb-5">
-              <label className="block text-gray-700 mb-2 font-medium">
-                Your Name
-              </label>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your name"
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-gray-700 mb-2 font-medium">
-                Room ID
-              </label>
-              <input
-                type="text"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter room ID"
-              />
-            </div>
-
-            <button
-              onClick={joinRoom}
-              disabled={!userName.trim() || !roomId.trim()}
-              className="w-full bg-blue-500 text-white py-3 rounded-md hover:bg-blue-600 transition duration-200 font-medium disabled:bg-blue-300 disabled:cursor-not-allowed">
-              Join Room
-            </button>
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="flex items-center justify-between p-4 border-b bg-white shadow-sm">
+        <div className="flex items-center">
+          <div className="w-10 h-10 mr-2 bg-blue-600 rounded-lg flex items-center justify-center">
+            <Video size={22} className="text-white" />
+          </div>
+          <span className="text-xl font-medium text-gray-800">Ez Meet</span>
+        </div>
+        
+        {/* Mobile menu button */}
+        <div className="md:hidden">
+          <button 
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className="p-2 rounded-md hover:bg-gray-100"
+          >
+            {showMobileMenu ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+        
+        {/* Desktop menu */}
+        <div className="hidden md:flex items-center space-x-6">
+          <span className="text-sm text-gray-500">10:29 • Sat 19 Apr</span>
+          <button className="p-2 rounded-full hover:bg-gray-100">
+            <Settings size={20} className="text-gray-600" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-gray-100">
+            <Info size={20} className="text-gray-600" />
+          </button>
+          <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-medium">
+            EZ
           </div>
         </div>
-      ) : (
-        <div className="flex flex-grow overflow-hidden">
-          {/* Main content area */}
-          <div className="flex-grow relative">
-            {/* Meeting info bar */}
-            <div className="absolute top-0 left-0 right-0 bg-white bg-opacity-90 z-10 px-4 py-2 flex justify-between items-center shadow-sm">
-              <h2 className="text-lg font-medium text-gray-800">
-                Room: {roomId}
-              </h2>
-              <button
-                onClick={leaveRoom}
-                className="bg-red-500 text-white px-4 py-1.5 rounded-md hover:bg-red-600 text-sm font-medium transition duration-200">
-                Leave
-              </button>
-            </div>
+      </header>
 
-            {/* Video grid */}
-            <div className="p-4 pt-14 h-full overflow-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
-                {/* My video */}
-                <div className="bg-black rounded-lg overflow-hidden shadow-md aspect-video relative">
-                  <video
-                    ref={userVideoRef}
-                    muted
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-3 left-3 bg-black bg-opacity-60 text-white px-3 py-1 rounded-md text-sm font-medium">
-                    You ({userName})
+      {/* Mobile menu */}
+      {showMobileMenu && (
+        <div className="md:hidden bg-white border-b">
+          <div className="px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">10:29 • Sat 19 Apr</span>
+              <div className="flex space-x-4">
+                <button className="p-1 rounded-full hover:bg-gray-100">
+                  <Settings size={18} className="text-gray-600" />
+                </button>
+                <button className="p-1 rounded-full hover:bg-gray-100">
+                  <Info size={18} className="text-gray-600" />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-medium text-sm">
+                EZ
+              </div>
+              <span className="text-gray-800">Ez User</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main className="flex flex-1 flex-col md:flex-row md:items-center px-4 py-8 md:py-12 max-w-7xl mx-auto w-full">
+        {/* Left Side */}
+        <div className="md:w-1/2 flex flex-col justify-center pr-0 md:pr-8">
+          <h1 className="text-3xl md:text-4xl font-bold mb-3 text-gray-800">Video calls and meetings for everyone</h1>
+          <p className="text-md md:text-lg text-gray-600 mb-6">
+            Connect, collaborate and celebrate from anywhere with Ez Meet
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            <div className="relative">
+              <button 
+                className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg transition duration-150 w-full sm:w-auto"
+                onClick={toggleNewMeetingOptions}
+              >
+                <Video size={20} className="mr-2" />
+                <span>New meeting</span>
+              </button>
+              
+              {showNewMeetingOptions && (
+                <div className="absolute z-10 mt-2 bg-white shadow-lg rounded-lg overflow-hidden w-64 border">
+                  <div className="py-1">
+                    <button className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100">
+                      <Play size={18} className="mr-3 text-blue-600" />
+                      <span>Start an instant meeting</span>
+                    </button>
+                    <button className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100">
+                      <Clock size={18} className="mr-3 text-blue-600" />
+                      <span>Schedule in calendar</span>
+                    </button>
+                    <button className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-100">
+                      <Users size={18} className="mr-3 text-blue-600" />
+                      <span>Create a recurring meeting</span>
+                    </button>
                   </div>
                 </div>
-
-                {/* Other participants' videos */}
-                {peers.map((peerObj) => (
-                  <PeerVideo
-                    key={peerObj.peerID}
-                    peer={peerObj.peer}
-                    userName={peerObj.userName}
+              )}
+            </div>
+            
+            <div className="flex-1 flex items-center border rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-400 focus-within:border-blue-400 transition duration-150">
+              <input
+                type="text"
+                placeholder="Enter a code or link"
+                className="flex-1 px-4 py-3 outline-none text-gray-700"
+                value={meetingCode}
+                onChange={(e) => setMeetingCode(e.target.value)}
+              />
+              <button 
+                className={`px-6 py-3 font-medium ${meetingCode ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 cursor-not-allowed'}`}
+                disabled={!meetingCode}
+              >
+                Join
+              </button>
+            </div>
+          </div>
+          
+          {/* Recent meetings section */}
+          {recentMeetings.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-500 mb-3">RECENT MEETINGS</h3>
+              <div className="space-y-2">
+                {recentMeetings.map(meeting => (
+                  <div key={meeting.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 cursor-pointer transition duration-150">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center mr-3">
+                        <Video size={18} />
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-800">{meeting.name}</div>
+                        <div className="text-xs text-gray-500">{meeting.time}</div>
+                      </div>
+                    </div>
+                    <button className="text-blue-600 hover:bg-blue-100 p-2 rounded-full">
+                      <Play size={18} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <a href="#learn-more" className="text-blue-600 hover:text-blue-800 text-sm group flex items-center">
+            <span className="underline-offset-2 group-hover:underline">Learn more about Ez Meet</span>
+            <ChevronRight size={16} className="ml-1" />
+          </a>
+        </div>
+        
+        {/* Right Side - Carousel */}
+        <div className="md:w-1/2 flex items-center justify-center mt-10 md:mt-0">
+          <div className="relative w-full max-w-md">
+            {/* Carousel Controls */}
+            <button 
+              onClick={handlePrevSlide}
+              className="absolute left-0 top-1/2 transform -translate-y-1/2 -ml-4 z-10 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition duration-150"
+              aria-label="Previous slide"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            
+            {/* Carousel Content */}
+            <div className="bg-white rounded-xl p-8 text-center shadow-lg">
+              <div className="mb-6">
+                <div className="mx-auto w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center shadow-md">
+                  {slides[currentSlide].icon}
+                </div>
+              </div>
+              
+              <h2 className="text-xl font-semibold mb-3 text-gray-800">
+                {slides[currentSlide].title}
+              </h2>
+              
+              <p className="text-gray-600 mb-6">
+                {slides[currentSlide].description}
+              </p>
+              
+              {/* Carousel Indicators */}
+              <div className="flex justify-center space-x-2 mt-4">
+                {slides.map((_, index) => (
+                  <button
+                    key={index}
+                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                      index === currentSlide ? 'bg-blue-600 w-6' : 'bg-gray-300 hover:bg-gray-400'
+                    }`}
+                    onClick={() => setCurrentSlide(index)}
+                    aria-label={`Go to slide ${index + 1}`}
                   />
                 ))}
               </div>
             </div>
-
-            {/* Debug toggle button */}
-            <button
-              onClick={() => setShowDebug(!showDebug)}
-              className="absolute bottom-20 right-4 bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-md text-sm">
-              {showDebug ? "Hide Debug" : "Show Debug"}
+            
+            <button 
+              onClick={handleNextSlide}
+              className="absolute right-0 top-1/2 transform -translate-y-1/2 -mr-4 z-10 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition duration-150"
+              aria-label="Next slide"
+            >
+              <ChevronRight size={20} />
             </button>
-
-            {/* Debug panel */}
-            {showDebug && (
-              <div className="absolute bottom-20 left-4 right-4 mb-10 bg-white rounded-lg shadow-lg p-4 max-h-40 overflow-auto">
-                <h3 className="text-lg font-semibold mb-2">Debug Info</h3>
-                <div className="text-sm font-mono">
-                  {debug.map((msg, i) => (
-                    <div key={i} className="mb-1 text-gray-700">
-                      {msg}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-          {/* Sidebar (chat, participants, etc.) */}
-          <SideBar showChat={showChat} setShowChat={setShowChat} />
         </div>
-      )}
+      </main>
 
-      {/* Control bar (always at bottom) */}
-      {joined && (
-        <ControlBar
-          leaveRoom={leaveRoom}
-          showChat={showChat}
-          setShowChat={setShowChat}
-        />
-      )}
+      {/* Quick access floating button (mobile) */}
+      <div className="md:hidden fixed bottom-6 right-6">
+        <button className="bg-blue-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-blue-700 transition duration-150">
+          <PlusCircle size={24} />
+        </button>
+      </div>
     </div>
   );
-};
-
-export default VideoChat;
+}
