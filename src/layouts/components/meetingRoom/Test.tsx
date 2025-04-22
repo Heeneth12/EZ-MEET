@@ -1,8 +1,9 @@
-'use client';
-import React, { useState, useEffect, useRef } from 'react';
+"use client";
+import React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { User, Zap, Activity, Globe, Shield, Settings } from 'lucide-react';
 
-export default function NetworkVisualization() {
+const EnhancedNetworkVisualization = () => {
   const [hovering, setHovering] = useState(false);
   const [activeNode, setActiveNode] = useState(null);
   const [highlightedPath, setHighlightedPath] = useState(null);
@@ -13,25 +14,25 @@ export default function NetworkVisualization() {
   // Define node types with specific icons and colors
   const nodeTypes = {
     user: { icon: User, primaryColor: 'bg-blue-500', secondaryColor: 'bg-blue-400' },
-    admin: { icon: Shield, primaryColor: 'bg-gray-500', secondaryColor: 'bg-purple-400' },
+    admin: { icon: Shield, primaryColor: 'bg-purple-500', secondaryColor: 'bg-purple-400' },
     server: { icon: Globe, primaryColor: 'bg-green-500', secondaryColor: 'bg-green-400' },
     device: { icon: Settings, primaryColor: 'bg-orange-500', secondaryColor: 'bg-orange-400' },
     gateway: { icon: Activity, primaryColor: 'bg-yellow-500', secondaryColor: 'bg-yellow-400' }
   };
 
-  // Enhanced nodes with more metadata and positioning - payment platform specific
+  // Enhanced nodes with more metadata and positioning
   const nodes = [
-    { id: 'center', type: 'admin', x: 50, y: 50, size: 56, label: 'Hyperswitch', status: 'active', connections: 8 },
-    { id: 'node1', type: 'user', x: 25, y: 20, size: 44, label: 'Merchant', status: 'active', connections: 3 },
-    { id: 'node2', type: 'gateway', x: 75, y: 20, size: 44, label: 'Payment Gateway', status: 'active', connections: 5 },
-    { id: 'node3', type: 'server', x: 25, y: 80, size: 44, label: 'Processing Server', status: 'active', connections: 4 },
-    { id: 'node4', type: 'device', x: 60, y: 80, size: 44, label: 'Terminal', status: 'active', connections: 2 },
-    { id: 'node5', type: 'user', x: 40, y: 30, size: 40, label: 'Developer', status: 'active', connections: 1 },
-    { id: 'node6', type: 'server', x: 50, y: 10, size: 40, label: 'API Server', status: 'active', connections: 3 },
-    { id: 'node7', type: 'device', x: 30, y: 60, size: 40, label: 'Mobile App', status: 'active', connections: 2 },
-    { id: 'node8', type: 'user', x: 70, y: 70, size: 40, label: 'Customer', status: 'active', connections: 3 },
-    { id: 'node9', type: 'user', x: 15, y: 40, size: 36, label: 'Admin', status: 'active', connections: 1 },
-    { id: 'node10', type: 'device', x: 85, y: 45, size: 36, label: 'Web Store', status: 'active', connections: 2 },
+    { id: 'center', type: 'admin', x: 50, y: 50, size: 56, label: 'Main Hub', status: 'active', connections: 8 },
+    { id: 'node1', type: 'user', x: 25, y: 20, size: 44, label: 'User A', status: 'active', connections: 3 },
+    { id: 'node2', type: 'gateway', x: 75, y: 20, size: 44, label: 'Gateway 1', status: 'active', connections: 5 },
+    { id: 'node3', type: 'server', x: 25, y: 80, size: 44, label: 'Server 1', status: 'active', connections: 4 },
+    { id: 'node4', type: 'device', x: 75, y: 80, size: 44, label: 'Device 3', status: 'warning', connections: 2 },
+    { id: 'node5', type: 'user', x: 40, y: 30, size: 40, label: 'User B', status: 'active', connections: 1 },
+    { id: 'node6', type: 'server', x: 60, y: 30, size: 40, label: 'Server 2', status: 'inactive', connections: 0 },
+    { id: 'node7', type: 'device', x: 30, y: 60, size: 40, label: 'Device 1', status: 'active', connections: 2 },
+    { id: 'node8', type: 'user', x: 70, y: 70, size: 40, label: 'User C', status: 'active', connections: 3 },
+    { id: 'node9', type: 'user', x: 15, y: 40, size: 36, label: 'User D', status: 'active', connections: 1 },
+    { id: 'node10', type: 'device', x: 85, y: 45, size: 36, label: 'Device 2', status: 'active', connections: 2 },
   ];
 
   // Define connection paths between nodes with types and strengths
@@ -49,9 +50,17 @@ export default function NetworkVisualization() {
     { id: 'conn-11', from: 'node3', to: 'node7', strength: 0.6, type: 'tertiary' },
     { id: 'conn-12', from: 'node4', to: 'node8', strength: 0.5, type: 'tertiary' },
     { id: 'conn-13', from: 'node4', to: 'node10', strength: 0.4, type: 'tertiary' },
-    { id: 'conn-14', from: 'center', to: 'node6', strength: 0.8, type: 'primary' },
-    { id: 'conn-15', from: 'node6', to: 'node10', strength: 0.6, type: 'tertiary' },
   ];
+
+  // Background decorative elements
+  const decorations = Array.from({ length: 30 }, (_, i) => ({
+    id: `decoration-${i}`,
+    x: Math.random() * 100,
+    y: Math.random() * 100,
+    size: Math.random() * 10 + 4,
+    opacity: Math.random() * 0.4 + 0.1,
+    color: ['border-blue-200', 'border-yellow-200', 'border-green-200', 'border-purple-200'][Math.floor(Math.random() * 4)]
+  }));
 
   // Generate data packets for active connections
   useEffect(() => {
@@ -125,6 +134,7 @@ export default function NetworkVisualization() {
       setHighlightedPath(null);
     } else {
       setHighlightedPath(nodeId);
+      // Could add other effects here
     }
   };
 
@@ -138,7 +148,7 @@ export default function NetworkVisualization() {
     }
   };
 
-  // Calculate network stats - payment platform specific
+  // Calculate network stats
   const networkStats = {
     totalNodes: nodes.length,
     activeNodes: nodes.filter(n => n.status === 'active').length,
@@ -149,15 +159,31 @@ export default function NetworkVisualization() {
   return (
     <div 
       ref={containerRef}
-      className="relative w-full h-96  overflow-hidden"
+      className="relative w-full h-96  rounded-xl overflow-hidden shadow-lg"
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => {
-        setHovering(true);
+        setHovering(false);
         setActiveNode(null);
       }}
     >
+      {/* Ambient background effect */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 opacity-70"></div>
+      
       {/* Background decorative circles */}
-
+      {decorations.map(decoration => (
+        <div
+          key={decoration.id}
+          className={`absolute border ${decoration.color} rounded-full transition-all duration-1000`}
+          style={{
+            left: `${decoration.x}%`,
+            top: `${decoration.y}%`,
+            width: `${decoration.size}px`,
+            height: `${decoration.size}px`,
+            opacity: hovering ? decoration.opacity * 1.5 : decoration.opacity,
+            transform: hovering ? `scale(${1 + Math.random() * 0.3})` : 'scale(1)',
+          }}
+        />
+      ))}
       
       {/* SVG for connections and paths */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none">
@@ -174,7 +200,7 @@ export default function NetworkVisualization() {
           </filter>
         </defs>
         
-        {/* Connection lines with varying styles */}
+        {/* Connection lines with varying styles based on type and strength */}
         {connections.map(connection => {
           const fromNode = nodes.find(n => n.id === connection.from);
           const toNode = nodes.find(n => n.id === connection.to);
@@ -271,7 +297,6 @@ export default function NetworkVisualization() {
                 cx={`${currentX}%`}
                 cy={`${currentY}%`}
                 r={packet.size}
-                fill="white"
                 className={packet.color}
                 opacity={1 - Math.abs(packet.progress - 0.5) * 0.5}
                 filter={isHighlighted ? "url(#glow)" : "none"}
@@ -344,15 +369,76 @@ export default function NetworkVisualization() {
                 <div className="absolute inset-0 rounded-full border-2 border-white opacity-40 animate-ping" />
                 <div className="absolute w-full h-full rounded-full border border-white opacity-30" style={{
                   animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
-                  animationDelay: '0.5s'
+                  animationDelay: '0.5s',
+                  transform: 'scale(1.3)'
                 }} />
               </>
+            )}
+            
+            {/* Node label */}
+            {isActive && (
+              <div 
+                className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-1 bg-white/90 backdrop-blur-sm text-gray-700 text-xs font-medium rounded-full shadow-md whitespace-nowrap"
+              >
+                {node.label}
+                <div className="text-xs text-gray-500 font-normal">
+                  {node.connections} connection{node.connections !== 1 ? 's' : ''}
+                </div>
+              </div>
             )}
           </div>
         );
       })}
       
-      {/* Control button */}
+      {/* Network statistics panel */}
+      {showStats && (
+        <div 
+          className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/80 backdrop-blur-md px-6 py-2 rounded-full shadow-lg text-sm flex space-x-6 items-center border border-blue-100/50 animate-fade-in"
+          style={{
+            boxShadow: '0 4px 20px rgba(59, 130, 246, 0.15)'
+          }}
+        >
+          <div className="flex items-center">
+            <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+            <span className="font-medium text-gray-700">{networkStats.totalNodes} Nodes</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+            <span className="font-medium text-gray-700">{networkStats.activeNodes} Active</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 rounded-full bg-purple-500 mr-2"></div>
+            <span className="font-medium text-gray-700">{networkStats.totalConnections} Links</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 rounded-full bg-yellow-500 mr-2"></div>
+            <span className="font-medium text-gray-700">{networkStats.averageStrength} Strength</span>
+          </div>
+        </div>
+      )}
+      
+      {/* Interactive tooltip for active node */}
+      {activeNode && (
+        <div 
+          className="absolute top-4 right-4 bg-white/90 backdrop-blur-md p-3 rounded-lg shadow-lg text-sm border border-blue-100/50 animate-fade-in max-w-xs"
+          style={{
+            boxShadow: '0 4px 20px rgba(59, 130, 246, 0.15)'
+          }}
+        >
+          <div className="flex items-center mb-2">
+            <div className={`w-3 h-3 rounded-full ${getStatusColor(nodes.find(n => n.id === activeNode)?.status || 'active')} mr-2`}></div>
+            <h3 className="font-medium text-gray-800">{nodes.find(n => n.id === activeNode)?.label}</h3>
+          </div>
+          <div className="text-xs text-gray-600">
+            {connections.filter(c => c.from === activeNode || c.to === activeNode).length} active connections
+          </div>
+          <div className="mt-2 text-xs text-blue-600 font-medium cursor-pointer" onClick={() => handleNodeClick(activeNode)}>
+            {highlightedPath === activeNode ? 'Hide Path' : 'Show Path'}
+          </div>
+        </div>
+      )}
+      
+      {/* Control buttons */}
       <div className="absolute top-4 left-4 flex space-x-2">
         <button 
           className="bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md hover:bg-white transition-all duration-200"
@@ -366,4 +452,6 @@ export default function NetworkVisualization() {
       </div>
     </div>
   );
-}
+};
+
+export default EnhancedNetworkVisualization;
