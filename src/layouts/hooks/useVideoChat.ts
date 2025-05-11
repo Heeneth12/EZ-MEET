@@ -18,6 +18,7 @@ import { PeerConnection, User } from '../utils/types';
 export const useVideoChat = () => {
   const [roomId, setRoomId] = useState<string>('');
   const [userName, setUserName] = useState<string>('');
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [joined, setJoined] = useState<boolean>(false);
   const [peers, setPeers] = useState<PeerConnection[]>([]);
   const [myStream, setMyStream] = useState<MediaStream | null>(null);
@@ -52,8 +53,8 @@ export const useVideoChat = () => {
     socketRef.current.on('all-users', (users: User[]) => {
       if (!socketRef.current) return;
       addDebug(`Received all users in room: ${JSON.stringify(users)}`);
-      
       // Create peers for all existing users in the room
+      setAllUsers(users);
       users.forEach(user => {
         if (user.id !== socketRef.current?.id) {
           addDebug(`Creating peer for user ${user.name} (${user.id})`);
@@ -262,6 +263,7 @@ export const useVideoChat = () => {
     roomId,
     setRoomId,
     userName,
+    allUsers,
     setUserName,
     joined,
     setJoined,

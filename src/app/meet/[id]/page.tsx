@@ -11,6 +11,7 @@ const VideoChat: React.FC = () => {
     roomId,
     setRoomId,
     userName,
+    allUsers,
     setUserName,
     joined,
     peers,
@@ -136,6 +137,7 @@ const VideoChat: React.FC = () => {
           {/* Sidebar (chat, participants, etc.) */}
           <SideBar
             showChat={showChat}
+            allUsers={allUsers}
             setShowChat={setShowChat}
             showParticipants={showParticipants}
             setShowParticipants={setShowParticipants}

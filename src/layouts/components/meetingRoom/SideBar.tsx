@@ -1,9 +1,11 @@
 "use client";
+import { User } from "@/layouts/utils/types";
 import { X, MicOff, VideoOff, Volume2, MoreVertical } from "lucide-react";
 import React from "react";
 
 export default function SideBar(props: {
   showChat: boolean;
+  allUsers: User[];
   setShowChat: (show: boolean) => void;
   showParticipants: boolean;
   setShowParticipants: (show: boolean) => void;
@@ -29,35 +31,6 @@ export default function SideBar(props: {
         "Meeting summary so far: John welcomed the team. Sarah asked about project timeline.",
       time: "10:04 AM",
       isAI: true,
-    },
-  ]);
-  const [participants, setParticipants] = React.useState([
-    {
-      id: 1,
-      name: "You",
-      isSpeaking: false,
-      isMuted: false,
-      isVideoOff: false,
-      isHost: true,
-      isScreenSharing: false,
-    },
-    {
-      id: 2,
-      name: "John Smith",
-      isSpeaking: true,
-      isMuted: false,
-      isVideoOff: false,
-      isHost: false,
-      isScreenSharing: false,
-    },
-    {
-      id: 3,
-      name: "Sarah Chen",
-      isSpeaking: false,
-      isMuted: true,
-      isVideoOff: true,
-      isHost: false,
-      isScreenSharing: false,
     },
   ]);
 
@@ -150,7 +123,7 @@ export default function SideBar(props: {
             <div className="flex items-center">
               <h3 className="font-medium">Participants</h3>
               <span className="ml-2 bg-gray-700 px-2 py-0.5 rounded-full text-xs">
-                {participants.length}
+                {props.allUsers.length}
               </span>
             </div>
             <button
@@ -168,7 +141,7 @@ export default function SideBar(props: {
               />
             </div>
             <div className="px-2">
-              {participants.map((participant) => (
+              {props.allUsers.map((participant) => (
                 <div
                   key={participant.id}
                   className="flex items-center justify-between py-3 px-2 hover:bg-gray-700 rounded-lg">
@@ -182,18 +155,14 @@ export default function SideBar(props: {
                     <div>
                       <div className="flex items-center">
                         <span className="font-medium">{participant.name}</span>
-                        {participant.isHost && (
-                          <span className="ml-2 text-xs bg-blue-600 px-1.5 py-0.5 rounded-full">
-                            Host
-                          </span>
-                        )}
-                        {participant.id === 1 && (
+                  
+                        {participant.id === "1" && (
                           <span className="ml-2 text-xs bg-gray-600 px-1.5 py-0.5 rounded-full">
                             You
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center text-xs text-gray-400 mt-0.5">
+                      {/* <div className="flex items-center text-xs text-gray-400 mt-0.5">
                         {participant.isMuted && (
                           <MicOff size={12} className="mr-1" />
                         )}
@@ -212,7 +181,7 @@ export default function SideBar(props: {
                         {!participant.isSpeaking &&
                           !participant.isMuted &&
                           !participant.isVideoOff && <span>Available</span>}
-                      </div>
+                      </div> */}
                     </div>
                   </div>
                   <button className="text-gray-400 hover:text-white p-1">
